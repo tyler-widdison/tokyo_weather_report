@@ -1,0 +1,181 @@
+---
+title: "Weather Tokoyo Avgs 1960-2020"
+output: 
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include=FALSE}
+ # Lib/options
+library(rnoaa)
+library(viridis)
+library(tidyverse)
+library(ggExtra)
+options(noaakey = "-")
+```
+
+Local Climitalogical Data from NOAA.
+```{r, include=FALSE}
+tok_exp <- lcd(station = '47662099999', year = 2019)
+head(tok_exp)
+
+# A lot of columns not used. In my function I'll select only the columns which have information for hourly. Some of my returns give me different classes. This is why I specify each specific variable and give it a class.
+
+
+# I want to go back to 1950, I'll have to loop a bit.
+# NOTE:2005 is missing....
+years <- c(1960:2004, 2006:2020)
+
+# function callling to lcd(), selecting, and mutating the data frame so it is tidy
+weather_get <- function(years) {
+  lcd(station = '47662099999', year = years) %>%
+    as.data.frame() %>% 
+    select(date, name, elevation, source, hourlypresentweathertype, hourlydewpointtemperature,
+           hourlydrybulbtemperature,hourlyrelativehumidity, hourlypressurechange, 
+           hourlypressuretendency, hourlyskyconditions, 
+           hourlysealevelpressure, hourlyvisibility, hourlywetbulbtemperature, 
+           hourlywinddirection, hourlywindspeed) %>%
+    separate(date, c('date', 'hour'), 'T') %>% 
+    mutate(date = as.Date(date),
+           hour = substr(hour, 1, 2),
+           hour = as.integer(hour),
+           year = substr(date, 1, 4),
+           year = as.integer(year),
+           mon_day = substr(date, 6, 10),
+           elevation = as.numeric(elevation),
+           hourlydewpointtemperature = as.numeric(hourlydewpointtemperature),
+           hourlydrybulbtemperature = as.numeric(hourlydrybulbtemperature),
+           hourlydrybulbtemperature = as.numeric(hourlydrybulbtemperature),
+           hourlypressurechange = as.numeric(hourlypressurechange),
+           hourlyrelativehumidity = as.numeric(hourlyrelativehumidity),
+           hourlysealevelpressure = as.numeric(hourlysealevelpressure),
+           hourlyvisibility = as.numeric(hourlyvisibility),
+           hourlywetbulbtemperature = as.numeric(hourlywetbulbtemperature),
+           hourlywinddirection = as.numeric(hourlywinddirection),
+           hourlywindspeed = as.numeric(hourlywindspeed))
+}
+
+# appy the function to the years
+df_list <- lapply(years, weather_get)
+
+# bind the rows together for a final df
+df <- bind_rows(df_list) 
+  
+# I only want to see the weather during the OG days months/days/time matches will be happening.
+times_w <- c(0, 8:23)
+df <- df %>% 
+  filter(mon_day >= '07-20', mon_day <= '08-10', hour %in% times_w, hourlydrybulbtemperature != 120)
+
+head(df)
+# Ready for use!
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+df%>%mutate(mon_days = paste0(substr(date,6,7), '-', substr(date,8,9))) %>% filter(hour != 0) %>% group_by(hour, mon_day) %>% summarise(dry_mean = mean(hourlydrybulbtemperature), hum_mean = mean(hourlyrelativehumidity, na.rm = T)) %>% ggplot(aes(mon_day, hour, fill = dry_mean)) + geom_tile(color= "white",size=0.1) + scale_fill_viridis(name="Hrly Temps F",option ="C")  + labs(title = paste('Hourly Historical Temps Toyko 1960 - 2002')) + 
+    scale_y_continuous(trans = "reverse", breaks = unique(df$hour))+ theme_minimal(base_size = 8)+ theme(legend.position = "bottom")+
+    theme(plot.title=element_text(size = 14))+
+    theme(axis.text.y=element_text(size=6)) +
+    theme(strip.background = element_rect(colour="white"))+
+    theme(plot.title=element_text(hjust=0))+
+    theme(axis.text.x = element_text(angle = 45, vjust = 2, hjust=1, size = 8)) +
+    theme(axis.ticks=element_blank())+
+    theme(axis.text=element_text(size=7))+
+    theme(legend.title=element_text(size=8))+
+    theme(legend.text=element_text(size=6))+
+    removeGrid()
+
+df%>%mutate(mon_days = paste0(substr(date,6,7), '-', substr(date,8,9))) %>% filter(hour != 0) %>% group_by(hour, mon_day) %>% summarise(dry_mean = mean(hourlydrybulbtemperature), hum_mean = mean(hourlyrelativehumidity, na.rm = T)) %>% ggplot(aes(mon_day, hour, fill = hum_mean)) + geom_tile(color= "white",size=0.1) + scale_fill_viridis(name="Hrly Humidty",option ="C")  + labs(title = paste('Hourly Historical Humidty Toyko 1960 - 2002')) + 
+    scale_y_continuous(trans = "reverse", breaks = unique(df$hour))+ theme_minimal(base_size = 8)+ theme(legend.position = "bottom")+
+    theme(plot.title=element_text(size = 14))+
+    theme(axis.text.y=element_text(size=6)) +
+    theme(strip.background = element_rect(colour="white"))+
+    theme(plot.title=element_text(hjust=0))+
+    theme(axis.text.x = element_text(angle = 45, vjust = 2, hjust=1, size = 8)) +
+    theme(axis.ticks=element_blank())+
+    theme(axis.text=element_text(size=7))+
+    theme(legend.title=element_text(size=8))+
+    theme(legend.text=element_text(size=6))+
+    removeGrid()
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+
+# avg bulb temperarture by year
+dry <- df %>% group_by(year) %>% 
+  summarise(avg_temp = mean(hourlydrybulbtemperature, na.rm = T),
+            avg_humid = mean(hourlyrelativehumidity, na.rm = T)) %>% 
+  ggplot(aes(x = year, y = avg_temp)) + 
+  geom_line(color = viridis(1, begin = 0.7)) + 
+  geom_hline(yintercept = 82.8, linetype = 2, color = viridis(1)) + 
+  theme_bw() +
+  labs(title = paste('The historical avg temps/humidity\n during the days of the OG per year'))
+
+# avg humidity temperarture by year
+hum <- df %>% group_by(year) %>% 
+  summarise(avg_temp = mean(hourlydrybulbtemperature, na.rm = T),
+            avg_humid = mean(hourlyrelativehumidity, na.rm = T)) %>% 
+  ggplot(aes(x = year, y = avg_humid)) + 
+  geom_line(color = viridis(1, begin = 0.7)) + 
+  geom_hline(yintercept = 69.5, linetype = 2, color = viridis(1)) + 
+  theme_bw() 
+
+  
+
+egg::ggarrange(dry, hum)
+
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# avg bulb temperarture by hour
+dry <- df %>% group_by(hour) %>% 
+  summarise(avg_temp = mean(hourlydrybulbtemperature, na.rm = T),
+            avg_humid = mean(hourlyrelativehumidity, na.rm = T)) %>% 
+  ggplot(aes(x = hour, y = avg_temp)) + 
+  geom_line(color = viridis(1, begin = 0.7)) + 
+  geom_hline(yintercept = 82.8, linetype = 2, color = viridis(1)) + 
+  theme_bw() +
+  labs(title = paste('The historical avg temps/humidity\n during the days of the OG per hour'))
+
+# avg humidity temperarture by hour
+hum <- df %>% group_by(hour) %>% 
+  summarise(avg_temp = mean(hourlydrybulbtemperature, na.rm = T),
+            avg_humid = mean(hourlyrelativehumidity, na.rm = T)) %>% 
+  ggplot(aes(x = hour, y = avg_humid)) + 
+  geom_line(color = viridis(1, begin = 0.7)) + 
+  geom_hline(yintercept = 69.5, linetype = 2, color = viridis(1)) + 
+  theme_bw()
+
+egg::ggarrange(dry, hum)
+
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# avg bulb temperarture
+dry <- df %>% group_by(mon_day) %>% 
+  summarise(avg_temp = mean(hourlydrybulbtemperature, na.rm = T),
+            avg_humid = mean(hourlyrelativehumidity, na.rm = T)) %>% 
+  ggplot(aes(x = mon_day, y = avg_temp, group = 1)) + 
+  geom_line(color = viridis(1, begin = 0.7)) + 
+  geom_hline(yintercept = 82.8, linetype = 2, color = viridis(1)) + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  labs(title = paste('The historical avg temps/humidity\n during the days of the OG per day'))
+  
+
+# avg humidity temperarture
+hum <- df %>% group_by(mon_day) %>% 
+  summarise(avg_temp = mean(hourlydrybulbtemperature, na.rm = T),
+            avg_humid = mean(hourlyrelativehumidity, na.rm = T)) %>% 
+  ggplot(aes(x = mon_day, y = avg_humid, group = 1)) + 
+  geom_line(color = viridis(1, begin = 0.7)) + 
+  geom_hline(yintercept = 69.5, linetype = 2, color = viridis(1)) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+egg::ggarrange(dry, hum)
+
+```
